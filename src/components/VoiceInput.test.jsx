@@ -346,4 +346,66 @@ describe('VoiceInput', () => {
     // Note: We don't test cancelAnimationFrame since our clean-up is run asynchronously
     // and may not happen within the test's timeframe
   });
+  
+  // Milestone 6 specific tests
+  
+  it('should show processing UI and then mock transcript after recording stops', async () => {
+    // Setup fake timers to control setTimeout
+    vi.useFakeTimers();
+    
+    // Mock successful permission and stream
+    const mockStream = { id: 'mock-stream-id', getTracks: () => [] };
+    mockGetUserMedia.mockResolvedValue(mockStream);
+    
+    render(<VoiceInput />);
+    
+    const micButton = screen.getByRole('button', { name: /toggle microphone/i });
+    
+    // First click to get permission
+    await act(async () => {
+      fireEvent.click(micButton);
+    });
+    
+    // Now click to start listening
+    await act(async () => {
+      fireEvent.click(micButton);
+    });
+    
+    // Get the mock recorder to simulate a stop event
+    const mockRecorder = new MockMediaRecorder(mockStream);
+    
+    // Set up the ondataavailable and onstop handlers
+    mockRecorder.ondataavailable = () => {};
+    
+    // Simulate MediaRecorder stop event completion
+    await act(async () => {
+      // Click the "Complete" button to stop recording
+      const completeButton = screen.getByRole('button', { name: /complete recording/i });
+      fireEvent.click(completeButton);
+      
+      // Manually trigger onstop (simulating MediaRecorder.stop)
+      if (mockRecorder.onstop) mockRecorder.onstop();
+    });
+    
+    // Verify that the UI shows "Processing" state
+    expect(screen.getByText(/Processing audio.../i)).toBeInTheDocument();
+    expect(screen.getByText(/Converting speech to text.../i)).toBeInTheDocument();
+    
+    // Verify that controls are disabled during processing
+    expect(micButton).toBeDisabled();
+    
+    // Fast-forward through the timeout
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    
+    // Verify that the mock transcript appears
+    expect(screen.getByText(/Hello world! This is a mock transcription/i)).toBeInTheDocument();
+    
+    // Verify that controls are re-enabled
+    expect(micButton).not.toBeDisabled();
+    
+    // Cleanup fake timers
+    vi.useRealTimers();
+  });
 });

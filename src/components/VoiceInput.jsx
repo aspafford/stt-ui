@@ -15,6 +15,7 @@ function VoiceInput() {
   // State variables as specified in the milestone
   const [permissionStatus, setPermissionStatus] = useState('idle');
   const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); 
   const [transcript, setTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
@@ -221,6 +222,19 @@ function VoiceInput() {
           // Create a single Blob from all chunks
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           console.log(`Recorded audio blob: size = ${audioBlob.size} bytes, type = ${audioBlob.type}`);
+          
+          // Show processing status
+          setErrorMessage('');
+          setIsProcessing(true);
+          
+          // Simulate STT processing delay (1.5 seconds)
+          setTimeout(() => {
+            // Generate mock transcript
+            const mockTranscript = 'Hello world! This is a mock transcription generated from your audio. The speech-to-text system is working properly.';
+            setTranscript(mockTranscript);
+            setErrorMessage('');
+            setIsProcessing(false);
+          }, 1500);
         };
         
         // Set up the onerror event handler
@@ -260,6 +274,10 @@ function VoiceInput() {
       return errorMessage;
     }
     
+    if (isProcessing) {
+      return 'Processing audio...';
+    }
+    
     switch (permissionStatus) {
       case 'idle':
         return 'Click microphone to start';
@@ -297,6 +315,7 @@ function VoiceInput() {
               height: 80
             }}
             onClick={handleMicButtonClick}
+            disabled={isProcessing || permissionStatus === 'pending'}
             aria-label="Toggle microphone"
           >
             {getMicButtonText()}
@@ -351,6 +370,7 @@ function VoiceInput() {
               color="success"
               startIcon={<CheckIcon />}
               onClick={handleCompleteClick}
+              disabled={isProcessing}
               aria-label="Complete recording"
             >
               Complete
@@ -367,15 +387,29 @@ function VoiceInput() {
               bgcolor: 'grey.50',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: transcript ? 'flex-start' : 'center'
+              justifyContent: transcript ? 'flex-start' : 'center',
+              position: 'relative'
             }}
             aria-live="polite"
           >
+            {isProcessing && (
+              <Box 
+                sx={{ 
+                  position: 'absolute', 
+                  top: 0, 
+                  left: 0, 
+                  right: 0, 
+                  height: 4 
+                }}
+              >
+                <LinearProgress color="primary" />
+              </Box>
+            )}
             {transcript ? (
               <Typography>{transcript}</Typography>
             ) : (
               <Typography color="text.secondary" align="center">
-                Transcription will appear here
+                {isProcessing ? 'Converting speech to text...' : 'Transcription will appear here'}
               </Typography>
             )}
           </Paper>
