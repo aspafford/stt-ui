@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { 
   Box, 
   Button, 
@@ -15,6 +15,79 @@ function VoiceInput() {
   const [permissionStatus, setPermissionStatus] = useState('idle');
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  
+  // Ref to store the MediaStream object
+  const mediaStreamRef = useRef(null);
+
+  // Function to request microphone permission
+  const requestMicrophonePermission = async () => {
+    // Only proceed if not already granted
+    if (permissionStatus !== 'granted') {
+      try {
+        setPermissionStatus('pending');
+        setErrorMessage('');
+        
+        // Request access to the microphone
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Store the stream for later use
+        mediaStreamRef.current = stream;
+        
+        // Update permission status
+        setPermissionStatus('granted');
+      } catch (error) {
+        console.error('Error accessing microphone:', error);
+        
+        // Handle specific error types
+        if (error.name === 'NotAllowedError') {
+          setPermissionStatus('denied');
+          setErrorMessage('Microphone permission denied. Please allow access to use this feature.');
+        } else if (error.name === 'NotFoundError') {
+          setPermissionStatus('denied');
+          setErrorMessage('No microphone found. Please connect a microphone and try again.');
+        } else if (error.name === 'TypeError' && !navigator.mediaDevices) {
+          setPermissionStatus('denied');
+          setErrorMessage('Media devices not available. This may be due to a non-secure context (non-HTTPS).');
+        } else {
+          setPermissionStatus('denied');
+          setErrorMessage(`Microphone error: ${error.message}`);
+        }
+      }
+    }
+  };
+
+  // Handler for mic button click
+  const handleMicButtonClick = async () => {
+    if (permissionStatus === 'granted') {
+      // In milestone 3, we'll implement the recording toggle
+      // For now, just log that we would toggle recording
+      console.log('Permission granted, would toggle recording state here');
+    } else {
+      // Request microphone access
+      await requestMicrophonePermission();
+    }
+  };
+
+  // Get status message based on current state
+  const getStatusMessage = () => {
+    if (errorMessage) {
+      return errorMessage;
+    }
+    
+    switch (permissionStatus) {
+      case 'idle':
+        return 'Click microphone to start';
+      case 'pending':
+        return 'Requesting microphone access...';
+      case 'denied':
+        return 'Microphone access denied';
+      case 'granted':
+        return isListening ? 'Listening...' : 'Microphone ready. Click Mic to start.';
+      default:
+        return 'Click microphone to start';
+    }
+  };
 
   return (
     <Container maxWidth="sm">
@@ -25,18 +98,25 @@ function VoiceInput() {
             variant="contained" 
             color="primary" 
             startIcon={<MicIcon />}
-            sx={{ borderRadius: '50%', width: 80, height: 80 }}
+            sx={{ 
+              borderRadius: '50%', 
+              width: 80, 
+              height: 80,
+              backgroundColor: isListening ? 'error.main' : 'primary.main'
+            }}
+            onClick={handleMicButtonClick}
+            aria-label="Toggle microphone"
           >
             Mic
           </Button>
 
           {/* Status indicator and level meter container */}
-          <Box sx={{ width: '100%', textAlign: 'center', py: 2 }}>
+          <Box 
+            sx={{ width: '100%', textAlign: 'center', py: 2 }}
+            aria-live="polite"
+          >
             <Typography variant="body1" color="text.secondary">
-              {permissionStatus === 'idle' ? 'Click microphone to start' : 
-               permissionStatus === 'pending' ? 'Requesting microphone access...' :
-               permissionStatus === 'denied' ? 'Microphone access denied' :
-               isListening ? 'Listening...' : 'Microphone ready'}
+              {getStatusMessage()}
             </Typography>
             
             {/* Level meter (initially empty) */}
@@ -54,6 +134,7 @@ function VoiceInput() {
             startIcon={<CheckIcon />}
             disabled={!isListening}
             sx={{ display: isListening ? 'flex' : 'none' }}
+            aria-label="Complete recording"
           >
             Complete
           </Button>
@@ -70,6 +151,7 @@ function VoiceInput() {
               alignItems: 'center',
               justifyContent: transcript ? 'flex-start' : 'center'
             }}
+            aria-live="polite"
           >
             {transcript ? (
               <Typography>{transcript}</Typography>
