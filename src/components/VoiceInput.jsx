@@ -17,10 +17,15 @@ function VoiceInput() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [audioLevel, setAudioLevel] = useState(0);
   
   // Refs to store the MediaStream and MediaRecorder objects
   const mediaStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const audioDataRef = useRef(null);
   
   // Ref to store audio chunks
   const audioChunksRef = useRef([]);
@@ -83,6 +88,110 @@ function VoiceInput() {
   const handleCompleteClick = () => {
     setIsListening(false);
   };
+
+  // Function to calculate RMS (Root Mean Square) from audio data
+  const calculateRMS = (buffer) => {
+    let sum = 0;
+    
+    // Sum of squares
+    for (let i = 0; i < buffer.length; i++) {
+      // Convert from 0-255 to -128-127 range for audio samples
+      const sample = (buffer[i] / 128.0) - 1.0;
+      sum += sample * sample;
+    }
+    
+    // Return the square root of the mean
+    const rms = Math.sqrt(sum / buffer.length);
+    
+    // Scale to 0-100 range with a logarithmic curve for better visualization
+    // Adding a small value (0.01) to avoid log(0)
+    const scaledRMS = Math.min(100, Math.max(0, 
+      100 * Math.pow(rms, 0.5) / 0.5
+    ));
+    
+    return scaledRMS;
+  };
+
+  // Effect to set up audio visualization when listening state changes
+  useEffect(() => {
+    if (!mediaStreamRef.current) return;
+    
+    // Start audio visualization when isListening becomes true
+    if (isListening) {
+      try {
+        // Create an AudioContext if it doesn't exist or if it's closed
+        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          audioContextRef.current = new AudioContext();
+        }
+        
+        // Create audio source from the media stream
+        const source = audioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
+        
+        // Create an analyser node
+        const analyser = audioContextRef.current.createAnalyser();
+        analyser.fftSize = 256; // Smaller FFT size for better performance
+        analyserRef.current = analyser;
+        
+        // Connect the source to the analyser (but not to destination to avoid feedback)
+        source.connect(analyser);
+        
+        // Create a buffer for the time domain data
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        audioDataRef.current = dataArray;
+        
+        // Function to update the level meter
+        const updateLevelMeter = () => {
+          if (!analyserRef.current || !audioDataRef.current) return;
+          
+          // Get the time domain data
+          analyserRef.current.getByteTimeDomainData(audioDataRef.current);
+          
+          // Calculate the audio level
+          const level = calculateRMS(audioDataRef.current);
+          
+          // Update the state
+          setAudioLevel(level);
+          
+          // Schedule the next frame
+          animationFrameRef.current = requestAnimationFrame(updateLevelMeter);
+        };
+        
+        // Start the animation loop
+        updateLevelMeter();
+      } catch (error) {
+        console.error('Error setting up audio visualization:', error);
+        setErrorMessage(`Error setting up level meter: ${error.message}`);
+      }
+    } else {
+      // Clean up when isListening becomes false
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      // Reset audio level
+      setAudioLevel(0);
+      
+      // Close the audio context
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(console.error);
+      }
+    }
+    
+    // Cleanup function
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(console.error);
+      }
+    };
+  }, [isListening]);
 
   // Effect to handle media recording when isListening changes
   useEffect(() => {
@@ -202,10 +311,35 @@ function VoiceInput() {
               {getStatusMessage()}
             </Typography>
             
-            {/* Level meter (initially empty) */}
+            {/* Level meter */}
             {isListening && (
               <Box sx={{ width: '100%', mt: 1 }}>
-                <LinearProgress variant="determinate" value={0} />
+                <LinearProgress 
+                  variant="determinate" 
+                  value={audioLevel} 
+                  color="success"
+                  sx={{ 
+                    height: 10, 
+                    borderRadius: 5,
+                    '& .MuiLinearProgress-bar': {
+                      transition: 'transform 0.1s linear'
+                    }
+                  }}
+                  aria-label="Audio level meter"
+                />
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    mt: 0.5,
+                    fontSize: '0.75rem',
+                    color: 'text.secondary'
+                  }}
+                >
+                  <span>Low</span>
+                  <span>Medium</span>
+                  <span>High</span>
+                </Box>
               </Box>
             )}
           </Box>
