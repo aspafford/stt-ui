@@ -5,6 +5,6 @@ import App from './App';
 describe('App', () => {
   it('renders without crashing', () => {
     render(<App />);
-    expect(screen.getByText(/Vite \+ React/i)).toBeInTheDocument();
+    expect(screen.getByText(/Speech to Text/i)).toBeInTheDocument();
   });
 });
