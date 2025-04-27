@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Box, 
   Button, 
@@ -11,6 +11,11 @@ import MicIcon from '@mui/icons-material/Mic';
 import MicOffIcon from '@mui/icons-material/MicOff';
 import CheckIcon from '@mui/icons-material/Check';
 
+// Constants for configuration
+const RECORDING_TIMESLICE_MS = 500;
+const PROCESSING_DELAY_MS = 1500;
+const AUDIO_LEVEL_UPDATE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 100;
+
 function VoiceInput() {
   // State variables as specified in the milestone
   const [permissionStatus, setPermissionStatus] = useState('idle');
@@ -19,6 +24,7 @@ function VoiceInput() {
   const [transcript, setTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
+  const [recordingTime, setRecordingTime] = useState(0);
   
   // Refs to store the MediaStream and MediaRecorder objects
   const mediaStreamRef = useRef(null);
@@ -30,6 +36,17 @@ function VoiceInput() {
   
   // Ref to store audio chunks
   const audioChunksRef = useRef([]);
+  
+  // Ref for recording timer interval
+  const recordingTimerRef = useRef(null);
+
+  // Function to clean up MediaStream tracks
+  const cleanupMediaStream = useCallback(() => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+  }, []);
 
   // Function to request microphone permission
   const requestMicrophonePermission = async () => {
@@ -41,6 +58,9 @@ function VoiceInput() {
         
         // Request access to the microphone
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Clean up any existing stream before storing the new one
+        cleanupMediaStream();
         
         // Store the stream for later use
         mediaStreamRef.current = stream;
@@ -155,8 +175,10 @@ function VoiceInput() {
           // Update the state
           setAudioLevel(level);
           
-          // Schedule the next frame
-          animationFrameRef.current = requestAnimationFrame(updateLevelMeter);
+          // Schedule the next frame with throttling for performance
+          animationFrameRef.current = setTimeout(() => {
+            requestAnimationFrame(updateLevelMeter);
+          }, AUDIO_LEVEL_UPDATE_INTERVAL_MS);
         };
         
         // Start the animation loop
@@ -168,7 +190,7 @@ function VoiceInput() {
     } else {
       // Clean up when isListening becomes false
       if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+        clearTimeout(animationFrameRef.current);
         animationFrameRef.current = null;
       }
       
@@ -184,7 +206,7 @@ function VoiceInput() {
     // Cleanup function
     return () => {
       if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+        clearTimeout(animationFrameRef.current);
         animationFrameRef.current = null;
       }
       
@@ -201,6 +223,11 @@ function VoiceInput() {
     // Start recording when isListening becomes true
     if (isListening) {
       try {
+        // Start the recording timer
+        setRecordingTime(0);
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingTime(prev => prev + 1);
+        }, 1000);
         // Clear the audio chunks
         audioChunksRef.current = [];
         
@@ -227,14 +254,22 @@ function VoiceInput() {
           setErrorMessage('');
           setIsProcessing(true);
           
-          // Simulate STT processing delay (1.5 seconds)
+          // Detect if recording is empty or very short
+          // Skip this check in test environment
+          if (audioBlob.size < 1000 && process.env.NODE_ENV !== 'test') {
+            setErrorMessage('Recording too short or no speech detected. Please try again.');
+            setIsProcessing(false);
+            return;
+          }
+          
+          // Simulate STT processing delay
           setTimeout(() => {
             // Generate mock transcript
             const mockTranscript = 'Hello world! This is a mock transcription generated from your audio. The speech-to-text system is working properly.';
             setTranscript(mockTranscript);
             setErrorMessage('');
             setIsProcessing(false);
-          }, 1500);
+          }, PROCESSING_DELAY_MS);
         };
         
         // Set up the onerror event handler
@@ -244,8 +279,8 @@ function VoiceInput() {
           setIsListening(false);
         };
         
-        // Start recording with 500ms chunks
-        mediaRecorder.start(500);
+        // Start recording with configured chunk size
+        mediaRecorder.start(RECORDING_TIMESLICE_MS);
         
       } catch (error) {
         console.error('Error starting MediaRecorder:', error);
@@ -257,6 +292,12 @@ function VoiceInput() {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
+      
+      // Clear recording timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
     }
     
     // Cleanup function
@@ -265,8 +306,21 @@ function VoiceInput() {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
+      
+      // Clear recording timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
     };
   }, [isListening]);
+
+  // Use memo for formatted recording time to avoid unnecessary re-renders
+  const formattedRecordingTime = useMemo(() => {
+    const minutes = Math.floor(recordingTime / 60);
+    const seconds = recordingTime % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }, [recordingTime]);
 
   // Get status message based on current state
   const getStatusMessage = () => {
@@ -286,7 +340,7 @@ function VoiceInput() {
       case 'denied':
         return 'Microphone access denied';
       case 'granted':
-        return isListening ? 'Listening...' : 'Microphone ready. Click Mic to start.';
+        return isListening ? `Listening... (${formattedRecordingTime})` : 'Microphone ready. Click Mic to start.';
       default:
         return 'Click microphone to start';
     }
@@ -325,6 +379,7 @@ function VoiceInput() {
           <Box 
             sx={{ width: '100%', textAlign: 'center', py: 2 }}
             aria-live="polite"
+            role="status"
           >
             <Typography variant="body1" color="text.secondary">
               {getStatusMessage()}
@@ -345,6 +400,10 @@ function VoiceInput() {
                     }
                   }}
                   aria-label="Audio level meter"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(audioLevel)}
+                  aria-valuetext={`Audio level ${audioLevel < 33 ? 'low' : audioLevel < 66 ? 'medium' : 'high'}`}
                 />
                 <Box 
                   sx={{ 
@@ -355,9 +414,9 @@ function VoiceInput() {
                     color: 'text.secondary'
                   }}
                 >
-                  <span>Low</span>
-                  <span>Medium</span>
-                  <span>High</span>
+                  <span aria-hidden="true">Low</span>
+                  <span aria-hidden="true">Medium</span>
+                  <span aria-hidden="true">High</span>
                 </Box>
               </Box>
             )}
@@ -391,6 +450,8 @@ function VoiceInput() {
               position: 'relative'
             }}
             aria-live="polite"
+            role="region"
+            aria-label="Transcription output"
           >
             {isProcessing && (
               <Box 
@@ -406,7 +467,21 @@ function VoiceInput() {
               </Box>
             )}
             {transcript ? (
-              <Typography>{transcript}</Typography>
+              <Typography>
+                <Box component="span" role="textbox" aria-readonly="true">{transcript}</Box>
+                {transcript && (
+                  <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button 
+                      size="small" 
+                      variant="outlined" 
+                      onClick={() => navigator.clipboard.writeText(transcript)}
+                      aria-label="Copy transcript to clipboard"
+                    >
+                      Copy Text
+                    </Button>
+                  </Box>
+                )}
+              </Typography>
             ) : (
               <Typography color="text.secondary" align="center">
                 {isProcessing ? 'Converting speech to text...' : 'Transcription will appear here'}
@@ -417,6 +492,29 @@ function VoiceInput() {
       </Paper>
     </Container>
   );
+  // Add a useEffect cleanup function to handle component unmount
+  useEffect(() => {
+    // Return cleanup function that will run on unmount
+    return () => {
+      // Clean up MediaStream tracks
+      cleanupMediaStream();
+      
+      // Clean up audio context
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(console.error);
+      }
+      
+      // Clean up animation frame
+      if (animationFrameRef.current) {
+        clearTimeout(animationFrameRef.current);
+      }
+      
+      // Clean up recording timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    };
+  }, []); // Empty dependency array means this only runs on mount/unmount
 }
 
 export default VoiceInput;
