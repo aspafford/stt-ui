@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
   Box, 
   Button, 
@@ -18,8 +18,12 @@ function VoiceInput() {
   const [transcript, setTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   
-  // Ref to store the MediaStream object
+  // Refs to store the MediaStream and MediaRecorder objects
   const mediaStreamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  
+  // Ref to store audio chunks
+  const audioChunksRef = useRef([]);
 
   // Function to request microphone permission
   const requestMicrophonePermission = async () => {
@@ -79,6 +83,67 @@ function VoiceInput() {
   const handleCompleteClick = () => {
     setIsListening(false);
   };
+
+  // Effect to handle media recording when isListening changes
+  useEffect(() => {
+    if (!mediaStreamRef.current) return;
+
+    // Start recording when isListening becomes true
+    if (isListening) {
+      try {
+        // Clear the audio chunks
+        audioChunksRef.current = [];
+        
+        // Create a new MediaRecorder instance
+        const mediaRecorder = new MediaRecorder(mediaStreamRef.current);
+        mediaRecorderRef.current = mediaRecorder;
+        
+        // Set up the ondataavailable event handler
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+        
+        // Set up the onstop event handler
+        mediaRecorder.onstop = () => {
+          console.log(`Recording stopped. Collected ${audioChunksRef.current.length} chunks.`);
+          
+          // Create a single Blob from all chunks
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          console.log(`Recorded audio blob: size = ${audioBlob.size} bytes, type = ${audioBlob.type}`);
+        };
+        
+        // Set up the onerror event handler
+        mediaRecorder.onerror = (event) => {
+          console.error('MediaRecorder error:', event.error);
+          setErrorMessage(`Recording error: ${event.error.message || 'Unknown error'}`);
+          setIsListening(false);
+        };
+        
+        // Start recording with 500ms chunks
+        mediaRecorder.start(500);
+        
+      } catch (error) {
+        console.error('Error starting MediaRecorder:', error);
+        setErrorMessage(`Error starting recording: ${error.message}`);
+        setIsListening(false);
+      }
+    } else {
+      // Stop recording when isListening becomes false
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+    }
+    
+    // Cleanup function
+    return () => {
+      // Stop the recording if component unmounts while recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, [isListening]);
 
   // Get status message based on current state
   const getStatusMessage = () => {
