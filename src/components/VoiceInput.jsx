@@ -8,6 +8,7 @@ import {
   LinearProgress
 } from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
+import MicOffIcon from '@mui/icons-material/MicOff';
 import CheckIcon from '@mui/icons-material/Check';
 
 function VoiceInput() {
@@ -60,13 +61,23 @@ function VoiceInput() {
   // Handler for mic button click
   const handleMicButtonClick = async () => {
     if (permissionStatus === 'granted') {
-      // In milestone 3, we'll implement the recording toggle
-      // For now, just log that we would toggle recording
-      console.log('Permission granted, would toggle recording state here');
+      // Toggle the isListening state
+      setIsListening(prevState => {
+        if (!prevState) {
+          // Starting a new recording, clear any previous transcript
+          setTranscript('');
+        }
+        return !prevState;
+      });
     } else {
       // Request microphone access
       await requestMicrophonePermission();
     }
+  };
+  
+  // Handler for complete button click
+  const handleCompleteClick = () => {
+    setIsListening(false);
   };
 
   // Get status message based on current state
@@ -89,6 +100,14 @@ function VoiceInput() {
     }
   };
 
+  // Get the appropriate mic button text based on listening state
+  const getMicButtonText = () => {
+    if (!isListening) {
+      return 'Start';
+    }
+    return 'Stop';
+  };
+
   return (
     <Container maxWidth="sm">
       <Paper elevation={3} sx={{ p: 3, mt: 4 }}>
@@ -96,18 +115,17 @@ function VoiceInput() {
           {/* Microphone button */}
           <Button 
             variant="contained" 
-            color="primary" 
-            startIcon={<MicIcon />}
+            color={isListening ? "error" : "primary"}
+            startIcon={isListening ? <MicOffIcon /> : <MicIcon />}
             sx={{ 
               borderRadius: '50%', 
               width: 80, 
-              height: 80,
-              backgroundColor: isListening ? 'error.main' : 'primary.main'
+              height: 80
             }}
             onClick={handleMicButtonClick}
             aria-label="Toggle microphone"
           >
-            Mic
+            {getMicButtonText()}
           </Button>
 
           {/* Status indicator and level meter container */}
@@ -127,17 +145,18 @@ function VoiceInput() {
             )}
           </Box>
 
-          {/* Complete button (hidden initially) */}
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<CheckIcon />}
-            disabled={!isListening}
-            sx={{ display: isListening ? 'flex' : 'none' }}
-            aria-label="Complete recording"
-          >
-            Complete
-          </Button>
+          {/* Complete button (shown only when recording) */}
+          {isListening && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<CheckIcon />}
+              onClick={handleCompleteClick}
+              aria-label="Complete recording"
+            >
+              Complete
+            </Button>
+          )}
 
           {/* Transcription result container */}
           <Paper 
