@@ -10,6 +10,36 @@ vi.mock('../hooks/useSpeechToText', () => ({
 // Import the mocked hook
 import { useSpeechToText } from '../hooks/useSpeechToText';
 
+/**
+ * Creates mock values for the useSpeechToText hook with sensible defaults
+ * @param {Object} overrides - Properties to override in the default mock values
+ * @returns {Object} Mock values for the useSpeechToText hook
+ */
+const createSpeechToTextMock = (overrides = {}) => {
+  // Default mock values
+  const defaults = {
+    isListening: false,
+    isProcessing: false,
+    permissionStatus: 'idle',
+    connectionStatus: 'idle',
+    audioLevel: 0,
+    transcript: '',
+    tempTranscript: '',
+    partialTranscript: '',
+    formattedRecordingTime: '00:00',
+    errorMessage: '',
+    toggleListening: vi.fn(),
+    stopListening: vi.fn(),
+    clearTranscript: vi.fn(),
+    sendAudio: vi.fn(),
+    getAudioContext: vi.fn(),
+    getSampleRate: vi.fn()
+  };
+  
+  // Return merged object with overrides taking precedence
+  return { ...defaults, ...overrides };
+};
+
 describe('VoiceInput', () => {
   // Reset all mocks before each test
   beforeEach(() => {
@@ -21,19 +51,8 @@ describe('VoiceInput', () => {
   });
   
   it('renders all required UI elements in initial state', () => {
-    // Set up the mock hook return value for this test
-    useSpeechToText.mockReturnValue({
-      isListening: false,
-      isProcessing: false,
-      permissionStatus: 'idle',
-      audioLevel: 0,
-      transcript: '',
-      formattedRecordingTime: '00:00',
-      errorMessage: '',
-      toggleListening: vi.fn(),
-      stopListening: vi.fn(),
-      clearTranscript: vi.fn()
-    });
+    // Use default mock values (idle state)
+    useSpeechToText.mockReturnValue(createSpeechToTextMock());
     
     render(<VoiceInput />);
     
@@ -53,19 +72,14 @@ describe('VoiceInput', () => {
   });
   
   it('renders listening state UI elements', () => {
-    // Set up the mock hook return value for listening state
-    useSpeechToText.mockReturnValue({
+    // Set up mock for active listening state
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
       isListening: true,
-      isProcessing: false,
       permissionStatus: 'granted',
+      connectionStatus: 'connected',
       audioLevel: 50, // Mid-level audio
-      transcript: '',
-      formattedRecordingTime: '00:05',
-      errorMessage: '',
-      toggleListening: vi.fn(),
-      stopListening: vi.fn(),
-      clearTranscript: vi.fn()
-    });
+      formattedRecordingTime: '00:05'
+    }));
     
     render(<VoiceInput />);
     
@@ -84,19 +98,11 @@ describe('VoiceInput', () => {
   });
   
   it('renders processing state UI elements', () => {
-    // Set up the mock hook return value for processing state
-    useSpeechToText.mockReturnValue({
-      isListening: false,
+    // Set up mock for processing state
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
       isProcessing: true,
-      permissionStatus: 'granted',
-      audioLevel: 0,
-      transcript: '',
-      formattedRecordingTime: '00:00',
-      errorMessage: '',
-      toggleListening: vi.fn(),
-      stopListening: vi.fn(),
-      clearTranscript: vi.fn()
-    });
+      permissionStatus: 'granted'
+    }));
     
     render(<VoiceInput />);
     
@@ -116,18 +122,10 @@ describe('VoiceInput', () => {
   
   it('renders transcript and action buttons when transcript exists', () => {
     // Mock with existing transcript
-    useSpeechToText.mockReturnValue({
-      isListening: false,
-      isProcessing: false,
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
       permissionStatus: 'granted',
-      audioLevel: 0,
-      transcript: 'This is a test transcript',
-      formattedRecordingTime: '00:00',
-      errorMessage: '',
-      toggleListening: vi.fn(),
-      stopListening: vi.fn(),
-      clearTranscript: vi.fn()
-    });
+      transcript: 'This is a test transcript'
+    }));
     
     render(<VoiceInput />);
     
@@ -139,20 +137,34 @@ describe('VoiceInput', () => {
     expect(screen.getByRole('button', { name: /copy transcript/i })).toBeInTheDocument();
   });
   
+  it('renders connecting state UI elements', () => {
+    // Set up mock for connecting state
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
+      isListening: true,
+      permissionStatus: 'granted',
+      connectionStatus: 'connecting' // Still connecting to AssemblyAI
+    }));
+    
+    render(<VoiceInput />);
+    
+    // Status should show connecting message
+    expect(screen.getByText(/Connecting to speech service/i)).toBeInTheDocument();
+    
+    // Should show indeterminate progress bar
+    const progressBar = screen.getByRole('progressbar', { name: /Connecting/i });
+    expect(progressBar).toBeInTheDocument();
+    
+    // Complete button should be disabled
+    const completeButton = screen.getByRole('button', { name: /complete recording/i });
+    expect(completeButton).toBeDisabled();
+  });
+
   it('renders error message when there is an error', () => {
     // Mock with error message
-    useSpeechToText.mockReturnValue({
-      isListening: false,
-      isProcessing: false,
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
       permissionStatus: 'denied',
-      audioLevel: 0,
-      transcript: '',
-      formattedRecordingTime: '00:00',
-      errorMessage: 'Microphone permission denied',
-      toggleListening: vi.fn(),
-      stopListening: vi.fn(),
-      clearTranscript: vi.fn()
-    });
+      errorMessage: 'Microphone permission denied'
+    }));
     
     render(<VoiceInput />);
     
@@ -163,18 +175,10 @@ describe('VoiceInput', () => {
   it('calls toggleListening when mic button is clicked', async () => {
     // Set up mock with toggleListening spy
     const toggleListeningSpy = vi.fn();
-    useSpeechToText.mockReturnValue({
-      isListening: false,
-      isProcessing: false,
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
       permissionStatus: 'granted',
-      audioLevel: 0,
-      transcript: '',
-      formattedRecordingTime: '00:00',
-      errorMessage: '',
-      toggleListening: toggleListeningSpy,
-      stopListening: vi.fn(),
-      clearTranscript: vi.fn()
-    });
+      toggleListening: toggleListeningSpy
+    }));
     
     render(<VoiceInput />);
     
@@ -190,20 +194,16 @@ describe('VoiceInput', () => {
   });
   
   it('calls stopListening when Complete button is clicked', async () => {
-    // Set up mock with toggleListening spy
+    // Set up mock with stopListening spy
     const stopListeningSpy = vi.fn();
-    useSpeechToText.mockReturnValue({
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
       isListening: true,
-      isProcessing: false,
       permissionStatus: 'granted',
+      connectionStatus: 'connected',
       audioLevel: 50,
-      transcript: '',
       formattedRecordingTime: '00:05',
-      errorMessage: '',
-      toggleListening: vi.fn(),
-      stopListening: stopListeningSpy,
-      clearTranscript: vi.fn()
-    });
+      stopListening: stopListeningSpy
+    }));
     
     render(<VoiceInput />);
     
@@ -221,18 +221,11 @@ describe('VoiceInput', () => {
   it('calls clearTranscript when Clear button is clicked', async () => {
     // Set up mock with clearTranscript spy
     const clearTranscriptSpy = vi.fn();
-    useSpeechToText.mockReturnValue({
-      isListening: false,
-      isProcessing: false,
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
       permissionStatus: 'granted',
-      audioLevel: 0,
       transcript: 'This is a test transcript',
-      formattedRecordingTime: '00:00',
-      errorMessage: '',
-      toggleListening: vi.fn(),
-      stopListening: vi.fn(),
       clearTranscript: clearTranscriptSpy
-    });
+    }));
     
     render(<VoiceInput />);
     
@@ -257,18 +250,10 @@ describe('VoiceInput', () => {
     });
     
     // Set up mock with transcript
-    useSpeechToText.mockReturnValue({
-      isListening: false,
-      isProcessing: false,
+    useSpeechToText.mockReturnValue(createSpeechToTextMock({
       permissionStatus: 'granted',
-      audioLevel: 0,
-      transcript: 'This is a test transcript',
-      formattedRecordingTime: '00:00',
-      errorMessage: '',
-      toggleListening: vi.fn(),
-      stopListening: vi.fn(),
-      clearTranscript: vi.fn()
-    });
+      transcript: 'This is a test transcript'
+    }));
     
     render(<VoiceInput />);
     

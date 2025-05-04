@@ -23,6 +23,7 @@ function VoiceInput() {
     isListening,
     isProcessing,
     permissionStatus,
+    connectionStatus,
     audioLevel,
     transcript,
     formattedRecordingTime,
@@ -44,6 +45,11 @@ function VoiceInput() {
       return 'Processing audio...';
     }
     
+    // Check if we're connecting to AssemblyAI
+    if (isListening && connectionStatus === 'connecting') {
+      return 'Connecting to speech service...';
+    }
+    
     switch (permissionStatus) {
       case 'idle':
         return 'Click microphone to start';
@@ -52,7 +58,15 @@ function VoiceInput() {
       case 'denied':
         return 'Microphone access denied';
       case 'granted':
-        return isListening ? `Listening... (${formattedRecordingTime})` : 'Microphone ready. Click Mic to start.';
+        if (isListening) {
+          if (connectionStatus === 'connected') {
+            return `Listening... (${formattedRecordingTime})`;
+          } else {
+            return 'Preparing to listen...';
+          }
+        } else {
+          return 'Microphone ready. Click Mic to start.';
+        }
       default:
         return 'Click microphone to start';
     }
@@ -94,8 +108,26 @@ function VoiceInput() {
               {getStatusMessage()}
             </Typography>
             
-            {/* Level meter */}
-            {isListening && (
+            {/* Loading indicator when connecting */}
+            {isListening && connectionStatus === 'connecting' && (
+              <Box sx={{ width: '100%', mt: 1 }}>
+                <LinearProgress 
+                  variant="indeterminate" 
+                  color="primary"
+                  sx={{ 
+                    height: 6, 
+                    borderRadius: 3
+                  }}
+                  aria-label="Connecting"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Establishing connection to speech service...
+                </Typography>
+              </Box>
+            )}
+            
+            {/* Level meter - only show when actively connected */}
+            {isListening && connectionStatus === 'connected' && (
               <Box sx={{ width: '100%', mt: 1 }}>
                 <LinearProgress 
                   variant="determinate" 
@@ -138,7 +170,7 @@ function VoiceInput() {
               color="success"
               startIcon={<CheckIcon />}
               onClick={stopListening}
-              disabled={isProcessing}
+              disabled={isProcessing || connectionStatus !== 'connected'}
               aria-label="Complete recording"
             >
               Complete
