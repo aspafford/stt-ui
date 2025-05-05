@@ -12,7 +12,6 @@ import { useRecordingTimer } from './useRecordingTimer';
 export function useSpeechToText() {
   // Local state for the component
   const [isListening, setIsListening] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState('');
 
   // Microphone permission hook
@@ -70,33 +69,19 @@ export function useSpeechToText() {
     return true;
   }, [permissionStatus, requestPermission, clearTranscripts, resetTimer]);
 
-  // Stop listening function with delay for final processing
+  // Stop listening function - only handles the listening state
   const stopListening = useCallback(() => {
     if (!isListening) return;
-    
-    console.log('Stopping recording...');
-    setIsProcessing(true);
-    
-    // Add a delay to ensure all final transcripts are processed
-    setTimeout(() => {
-      setIsListening(false);
-      
-      // Process the collected transcript after another small delay
-      setTimeout(() => {
-        console.log('Final collected transcript:', tempTranscript);
-        
-        // Add the temp transcript to the main transcript
-        if (tempTranscript.trim()) {
-          setTranscript(prev => {
-            const spacer = prev && !prev.endsWith(' ') ? ' ' : '';
-            return prev + spacer + tempTranscript.trim();
-          });
-        }
-        
-        setIsProcessing(false);
-      }, 500); // Short delay after stopping
-    }, 1500); // Longer delay before stopping
-  }, [isListening, tempTranscript]);
+    setIsListening(false);
+  }, [isListening]);
+
+  // useEffect to update transcript when isListening changes to false (after stopping)
+  // or when tempTranscript changes while not listening
+  useEffect(() => {
+    if (!isListening && tempTranscript.trim()) {
+      setTranscript(tempTranscript);
+    }
+  }, [isListening, tempTranscript])
 
   // Toggle listening function
   const toggleListening = useCallback(async () => {
@@ -132,7 +117,6 @@ export function useSpeechToText() {
   return {
     // State
     isListening,
-    isProcessing,
     permissionStatus,
     connectionStatus,
     audioLevel,

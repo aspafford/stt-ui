@@ -126,7 +126,6 @@ describe('useSpeechToText', () => {
     
     // Check initial state
     expect(result.current.isListening).toBe(false);
-    expect(result.current.isProcessing).toBe(false);
     expect(result.current.transcript).toBe('');
     expect(result.current.errorMessage).toBe('');
   });
@@ -203,31 +202,32 @@ describe('useSpeechToText', () => {
       result.current.toggleListening();
     });
     
-    // Should set isProcessing to true immediately
-    expect(result.current.isProcessing).toBe(true);
-    
-    // Should not set isListening to false immediately (due to delay)
-    expect(result.current.isListening).toBe(true);
-    
-    // Advance timer to complete first timeout
-    act(() => {
-      vi.advanceTimersByTime(1500);
-    });
-    
-    // Now isListening should be false
+    // isListening should be set to false immediately now
     expect(result.current.isListening).toBe(false);
-    
-    // Advance timer to complete second timeout
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-    
-    // isProcessing should now be false
-    expect(result.current.isProcessing).toBe(false);
   });
   
   it('updates transcript when tempTranscript is available after stopping', async () => {
-    // Mock tempTranscript with some content
+    // Initial setup with empty transcript
+    useAssemblyAIRealtime.mockReturnValue({
+      tempTranscript: '',
+      partialTranscript: '',
+      connectionStatus: 'connected',
+      connectionReady: true,
+      sttError: '',
+      connect: vi.fn(),
+      disconnect: mockDisconnectAssemblyAI,
+      sendAudio: mockSendAudio,
+      clearTranscripts: mockClearTranscripts
+    });
+    
+    const { result, rerender } = renderHook(() => useSpeechToText());
+    
+    // Start listening
+    await act(async () => {
+      await result.current.toggleListening();
+    });
+    
+    // Now update tempTranscript to simulate AssemblyAI returning a final result
     useAssemblyAIRealtime.mockReturnValue({
       tempTranscript: 'Hello world',
       partialTranscript: '',
@@ -240,26 +240,63 @@ describe('useSpeechToText', () => {
       clearTranscripts: mockClearTranscripts
     });
     
-    const { result } = renderHook(() => useSpeechToText());
+    // Re-render to reflect the new mock values
+    rerender();
+    
+    // Stop listening to trigger transcript update
+    act(() => {
+      result.current.toggleListening();
+    });
+    
+    // This should cause the useEffect to run and update the transcript
+    expect(result.current.transcript).toBe('Hello world');
+  });
+  
+  it('updates transcript when API sends final result after stopping', async () => {
+    // Initial setup with empty transcript
+    useAssemblyAIRealtime.mockReturnValue({
+      tempTranscript: '',
+      partialTranscript: '',
+      connectionStatus: 'connected',
+      connectionReady: true,
+      sttError: '',
+      connect: vi.fn(),
+      disconnect: mockDisconnectAssemblyAI,
+      sendAudio: mockSendAudio,
+      clearTranscripts: mockClearTranscripts
+    });
+    
+    const { result, rerender } = renderHook(() => useSpeechToText());
     
     // Start listening
     await act(async () => {
       await result.current.toggleListening();
     });
     
-    // Stop listening
+    // Stop listening first
     act(() => {
       result.current.toggleListening();
     });
     
-    // Advance timer through both delays
-    act(() => {
-      vi.advanceTimersByTime(1500); // First delay
-      vi.advanceTimersByTime(500);  // Second delay
+    // Now simulate AssemblyAI sending a final transcript AFTER stopping
+    useAssemblyAIRealtime.mockReturnValue({
+      tempTranscript: 'Final transcript after stopping',
+      partialTranscript: '',
+      connectionStatus: 'connected',
+      connectionReady: true,
+      sttError: '',
+      connect: vi.fn(),
+      disconnect: mockDisconnectAssemblyAI,
+      sendAudio: mockSendAudio,
+      clearTranscripts: mockClearTranscripts
     });
     
-    // Transcript should be updated with tempTranscript
-    expect(result.current.transcript).toBe('Hello world');
+    // Re-render to reflect the new mock values
+    rerender();
+    
+    // This should cause the useEffect to run and update the transcript
+    // This tests the specific behavior where the API sends final results after stopping
+    expect(result.current.transcript).toBe('Final transcript after stopping');
   });
   
   it.skip('appends tempTranscript to existing transcript with proper spacing', async () => {
