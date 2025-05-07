@@ -37,7 +37,7 @@ export function useSpeechToText() {
   } = useAssemblyAIRealtime(isListening);
 
   // Audio visualization hook
-  const { audioLevel, getAudioContext } = useAudioVisualization(mediaStream, isListening);
+  const { audioLevel, frequencyBands, getAudioContext } = useAudioVisualization(mediaStream, isListening);
 
   // Audio processing hook for sending data to AssemblyAI
   const { getSampleRate } = useAudioProcessing(
@@ -120,6 +120,7 @@ export function useSpeechToText() {
     permissionStatus,
     connectionStatus,
     audioLevel,
+    frequencyBands, // Add frequency bands to the returned state
     transcript,
     tempTranscript,
     partialTranscript,

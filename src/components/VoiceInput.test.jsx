@@ -23,6 +23,7 @@ const createSpeechToTextMock = (overrides = {}) => {
     permissionStatus: 'idle',
     connectionStatus: 'idle',
     audioLevel: 0,
+    frequencyBands: Array(16).fill(0), // Add frequencyBands with default 16 zero values
     transcript: '',
     tempTranscript: '',
     partialTranscript: '',

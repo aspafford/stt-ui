@@ -25,6 +25,7 @@ function VoiceInput() {
     permissionStatus,
     connectionStatus,
     audioLevel,
+    frequencyBands, // Add frequency bands
     transcript,
     formattedRecordingTime,
     errorMessage,
@@ -126,26 +127,95 @@ function VoiceInput() {
               </Box>
             )}
             
-            {/* Level meter - only show when actively connected */}
+            {/* Frequency bands visualization - only show when actively connected */}
             {isListening && connectionStatus === 'connected' && (
-              <Box sx={{ width: '100%', mt: 1 }}>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={audioLevel} 
-                  color="success"
-                  sx={{ 
-                    height: 10, 
-                    borderRadius: 5,
-                    '& .MuiLinearProgress-bar': {
-                      transition: 'transform 0.1s linear'
-                    }
+              <Box 
+                sx={{ 
+                  width: '100%', 
+                  mt: 1,
+                  position: 'relative' 
+                }}
+                aria-label="Audio frequency visualization"
+              >
+                {/* Frequency bands visualization */}
+                <Box 
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-end',
+                    height: 70, // Slightly taller for better visualization
+                    p: 1,
+                    bgcolor: 'rgba(0,0,0,0.02)',
+                    borderRadius: 2,
+                    position: 'relative',
+                    border: '1px solid rgba(0,0,0,0.08)',
                   }}
-                  aria-label="Audio level meter"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.round(audioLevel)}
-                  aria-valuetext={`Audio level ${audioLevel < 33 ? 'low' : audioLevel < 66 ? 'medium' : 'high'}`}
-                />
+                >
+                  {frequencyBands.map((level, index) => {
+                    // All bands are now in speech range since we've removed the lowest bands
+                    // Color gradient from light blue -> dark blue -> cyan for increasing levels
+                    
+                    // Calculate color intensity based on frequency range
+                    // Our bands now match our frequency ranges: low/mid/high voice
+                    const isLowerVoice = index <= 3;  // 300-1000Hz
+                    const isMidVoice = index > 3 && index <= 7;  // 1000-2000Hz
+                    // Higher speech frequencies (index > 7) will be the default case
+                    
+                    // Determine color based on level and frequency range
+                    let color;
+                    if (isLowerVoice) {
+                      // Low voice (fundamental frequencies) - purple to indigo
+                      color = level < 15 ? 'rgba(103, 58, 183, 0.3)' : // very light purple
+                              level < 40 ? 'rgba(103, 58, 183, 0.6)' : // light purple
+                              level < 70 ? 'rgba(103, 58, 183, 0.8)' : // purple 
+                              'rgba(103, 58, 183, 1.0)';               // deep purple
+                    } else if (isMidVoice) {
+                      // Mid voice (formants) - blue to primary
+                      color = level < 15 ? 'primary.light' : 
+                              level < 40 ? 'primary.main' : 
+                              level < 70 ? 'info.main' : 'info.dark';
+                    } else {
+                      // High voice (consonants) - cyan to teal
+                      color = level < 15 ? 'rgba(0, 188, 212, 0.3)' : // light cyan
+                              level < 40 ? 'rgba(0, 188, 212, 0.6)' : // cyan
+                              level < 70 ? 'rgba(0, 188, 212, 0.8)' : // deep cyan
+                              'rgba(0, 188, 212, 1.0)';               // teal
+                    }
+                    
+                    return (
+                      <Box
+                        key={index}
+                        sx={{
+                          width: `calc(100% / ${frequencyBands.length} - 2px)`,
+                          height: `${level}%`,
+                          bgcolor: color,
+                          borderRadius: '2px 2px 0 0',
+                          transition: 'height 0.1s ease',
+                          minWidth: 3,
+                          // Add glow effect for higher intensity levels
+                          boxShadow: level > 70 ? 
+                                    '0 0 5px rgba(33, 150, 243, 0.5)' : 'none',
+                        }}
+                        aria-hidden="true"
+                      />
+                    );
+                  })}
+                </Box>
+                
+                {/* Keep the original level meter hidden for screen readers */}
+                <Box sx={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={audioLevel} 
+                    aria-label="Audio level meter"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(audioLevel)}
+                    aria-valuetext={`Audio level ${audioLevel < 33 ? 'low' : audioLevel < 66 ? 'medium' : 'high'}`}
+                  />
+                </Box>
+                
+                {/* Frequency range indicators with color coding */}
                 <Box 
                   sx={{ 
                     display: 'flex', 
@@ -155,9 +225,9 @@ function VoiceInput() {
                     color: 'text.secondary'
                   }}
                 >
-                  <span aria-hidden="true">Low</span>
-                  <span aria-hidden="true">Medium</span>
-                  <span aria-hidden="true">High</span>
+                  <span aria-hidden="true" style={{ color: 'rgba(103, 58, 183, 0.8)' }}>Low (300-1000Hz)</span>
+                  <span aria-hidden="true" style={{ color: 'rgba(33, 150, 243, 0.8)' }}>Mid (1000-2000Hz)</span>
+                  <span aria-hidden="true" style={{ color: 'rgba(0, 188, 212, 0.8)' }}>High (2000-5000Hz)</span>
                 </Box>
               </Box>
             )}
